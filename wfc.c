@@ -37,6 +37,25 @@ typedef struct {
     bool adjacency[MAX_PATTERNS][MAX_PATTERNS][4]; // [pattern1][pattern2][direction]
     int generation_step;
     bool generation_complete;
+    // Progress tracking
+    bool patterns_extracted;
+    int extraction_x;
+    int extraction_y;
+    int extraction_total;
+    int extraction_progress;
+    bool adjacency_built;
+    int adjacency_i;
+    int adjacency_j;
+    int adjacency_d;
+    int adjacency_total;
+    int adjacency_progress;
+    bool grid_initialized;
+    int grid_init_x;
+    int grid_init_y;
+    int grid_init_total;
+    int grid_init_progress;
+    Color *input_pixels;
+    char current_operation[256];
 } WFC;
 
 // Direction helpers: 0=up, 1=right, 2=down, 3=left
@@ -114,67 +133,151 @@ int find_pattern(WFC *wfc, Pattern *p) {
     return -1;
 }
 
-// Extract patterns from input image
-void extract_patterns(WFC *wfc) {
-    Color *pixels = LoadImageColors(wfc->input_image);
+// Initialize pattern extraction
+void init_pattern_extraction(WFC *wfc) {
+    wfc->input_pixels = LoadImageColors(wfc->input_image);
     int width = wfc->input_image.width;
     int height = wfc->input_image.height;
 
     wfc->pattern_count = 0;
-
-    // Extract overlapping patterns
-    for(int y = 0; y <= height - PATTERN_SIZE; y++) {
-        for(int x = 0; x <= width - PATTERN_SIZE; x++) {
-            Pattern p;
-            p.frequency = 1;
-
-            // Copy pattern pixels
-            for(int py = 0; py < PATTERN_SIZE; py++) {
-                for(int px = 0; px < PATTERN_SIZE; px++) {
-                    p.pixels[py][px] = pixels[(y + py) * width + (x + px)];
-                }
-            }
-
-            // Check if pattern already exists
-            int existing = find_pattern(wfc, &p);
-            if(existing >= 0) {
-                wfc->patterns[existing].frequency++;
-            } else if(wfc->pattern_count < MAX_PATTERNS) {
-                p.index = wfc->pattern_count;
-                wfc->patterns[wfc->pattern_count] = p;
-                wfc->pattern_count++;
-            }
-        }
-    }
-
-    UnloadImageColors(pixels);
-
-    // Build adjacency rules
-    for(int i = 0; i < wfc->pattern_count; i++) {
-        for(int j = 0; j < wfc->pattern_count; j++) {
-            for(int d = 0; d < 4; d++) {
-                wfc->adjacency[i][j][d] = patterns_compatible(&wfc->patterns[i], &wfc->patterns[j], d);
-            }
-        }
-    }
-
-    printf("Extracted %d unique patterns\n", wfc->pattern_count);
+    wfc->extraction_x = 0;
+    wfc->extraction_y = 0;
+    wfc->extraction_total = (height - PATTERN_SIZE + 1) * (width - PATTERN_SIZE + 1);
+    wfc->extraction_progress = 0;
+    wfc->patterns_extracted = false;
+    sprintf(wfc->current_operation, "Extracting patterns from input image...");
 }
 
-// Initialize the grid with all possibilities
-void init_grid(WFC *wfc) {
-    for(int y = 0; y < OUTPUT_HEIGHT; y++) {
-        for(int x = 0; x < OUTPUT_WIDTH; x++) {
-            wfc->grid[y][x].collapsed = false;
-            wfc->grid[y][x].num_possible = wfc->pattern_count;
-            wfc->grid[y][x].final_pattern = -1;
-            for(int p = 0; p < wfc->pattern_count; p++) {
-                wfc->grid[y][x].possible[p] = true;
+// Process pattern extraction step by step
+bool extract_patterns_step(WFC *wfc, int steps_per_frame) {
+    int width = wfc->input_image.width;
+    int height = wfc->input_image.height;
+
+    for(int step = 0; step < steps_per_frame; step++) {
+        if(wfc->extraction_y > height - PATTERN_SIZE) {
+            // Extraction complete, clean up
+            UnloadImageColors(wfc->input_pixels);
+            wfc->input_pixels = NULL;
+            wfc->patterns_extracted = true;
+            sprintf(wfc->current_operation, "Building adjacency rules...");
+
+            // Initialize adjacency building
+            wfc->adjacency_i = 0;
+            wfc->adjacency_j = 0;
+            wfc->adjacency_d = 0;
+            wfc->adjacency_total = wfc->pattern_count * wfc->pattern_count * 4;
+            wfc->adjacency_progress = 0;
+            wfc->adjacency_built = false;
+
+            printf("Extracted %d unique patterns\n", wfc->pattern_count);
+            return true;
+        }
+
+        Pattern p;
+        p.frequency = 1;
+
+        // Copy pattern pixels
+        for(int py = 0; py < PATTERN_SIZE; py++) {
+            for(int px = 0; px < PATTERN_SIZE; px++) {
+                p.pixels[py][px] = wfc->input_pixels[(wfc->extraction_y + py) * width + (wfc->extraction_x + px)];
+            }
+        }
+
+        // Check if pattern already exists
+        int existing = find_pattern(wfc, &p);
+        if(existing >= 0) {
+            wfc->patterns[existing].frequency++;
+        } else if(wfc->pattern_count < MAX_PATTERNS) {
+            p.index = wfc->pattern_count;
+            wfc->patterns[wfc->pattern_count] = p;
+            wfc->pattern_count++;
+        }
+
+        wfc->extraction_progress++;
+
+        // Move to next position
+        wfc->extraction_x++;
+        if(wfc->extraction_x > width - PATTERN_SIZE) {
+            wfc->extraction_x = 0;
+            wfc->extraction_y++;
+        }
+    }
+
+    return false; // Not done yet
+}
+
+// Build adjacency rules step by step
+bool build_adjacency_step(WFC *wfc, int steps_per_frame) {
+    for(int step = 0; step < steps_per_frame; step++) {
+        if(wfc->adjacency_i >= wfc->pattern_count) {
+            // Adjacency building complete
+            wfc->adjacency_built = true;
+            sprintf(wfc->current_operation, "Ready");
+            return true;
+        }
+
+        wfc->adjacency[wfc->adjacency_i][wfc->adjacency_j][wfc->adjacency_d] =
+            patterns_compatible(&wfc->patterns[wfc->adjacency_i],
+                              &wfc->patterns[wfc->adjacency_j],
+                              wfc->adjacency_d);
+        wfc->adjacency_progress++;
+
+        // Move to next adjacency
+        wfc->adjacency_d++;
+        if(wfc->adjacency_d >= 4) {
+            wfc->adjacency_d = 0;
+            wfc->adjacency_j++;
+            if(wfc->adjacency_j >= wfc->pattern_count) {
+                wfc->adjacency_j = 0;
+                wfc->adjacency_i++;
             }
         }
     }
+
+    return false; // Not done yet
+}
+
+// Start grid initialization
+void init_grid_start(WFC *wfc) {
+    wfc->grid_init_x = 0;
+    wfc->grid_init_y = 0;
+    wfc->grid_init_total = OUTPUT_WIDTH * OUTPUT_HEIGHT;
+    wfc->grid_init_progress = 0;
+    wfc->grid_initialized = false;
     wfc->generation_step = 0;
     wfc->generation_complete = false;
+    sprintf(wfc->current_operation, "Initializing grid...");
+}
+
+// Process grid initialization step by step
+bool init_grid_step(WFC *wfc, int cells_per_frame) {
+    for(int step = 0; step < cells_per_frame; step++) {
+        if(wfc->grid_init_y >= OUTPUT_HEIGHT) {
+            // Grid initialization complete
+            wfc->grid_initialized = true;
+            sprintf(wfc->current_operation, "Ready");
+            return true;
+        }
+
+        // Initialize current cell
+        wfc->grid[wfc->grid_init_y][wfc->grid_init_x].collapsed = false;
+        wfc->grid[wfc->grid_init_y][wfc->grid_init_x].num_possible = wfc->pattern_count;
+        wfc->grid[wfc->grid_init_y][wfc->grid_init_x].final_pattern = -1;
+        for(int p = 0; p < wfc->pattern_count; p++) {
+            wfc->grid[wfc->grid_init_y][wfc->grid_init_x].possible[p] = true;
+        }
+
+        wfc->grid_init_progress++;
+
+        // Move to next cell
+        wfc->grid_init_x++;
+        if(wfc->grid_init_x >= OUTPUT_WIDTH) {
+            wfc->grid_init_x = 0;
+            wfc->grid_init_y++;
+        }
+    }
+
+    return false; // Not done yet
 }
 
 // Calculate entropy (number of possible patterns) for a cell
@@ -356,48 +459,100 @@ int main(int argc, char *argv[]) {
     // Initialize random seed
     srand(time(NULL));
 
-    // Initialize WFC
-    WFC wfc = {0};
-
-    // Load input image
-    wfc.input_image = LoadImage(input_file);
-    if(wfc.input_image.data == NULL) {
-        printf("Failed to load image: %s\n", input_file);
-        return 1;
-    }
-
-    // Initialize window
+    // Initialize window FIRST so we can show progress
     int screenWidth = WINDOW_WIDTH;
     int screenHeight = WINDOW_HEIGHT;
     InitWindow(screenWidth, screenHeight, "Wave Function Collapse - RayLib");
     SetTargetFPS(60);
 
+    // Initialize WFC
+    WFC wfc = {0};
+    sprintf(wfc.current_operation, "Loading input image...");
+
+    // Load input image
+    wfc.input_image = LoadImage(input_file);
+    if(wfc.input_image.data == NULL) {
+        printf("Failed to load image: %s\n", input_file);
+        CloseWindow();
+        return 1;
+    }
+
     // Create texture from input image
     wfc.input_texture = LoadTextureFromImage(wfc.input_image);
 
-    // Extract patterns and initialize grid
-    extract_patterns(&wfc);
-    init_grid(&wfc);
+    // Initialize pattern extraction (will be done incrementally in main loop)
+    init_pattern_extraction(&wfc);
 
     // Control variables
     bool auto_generate = false;
+    bool initialization_complete = false;
+    bool needs_grid_reset = false;
+    bool needs_new_patterns = false;
 
     while(!WindowShouldClose()) {
-        // Input handling
-        if(IsKeyPressed(KEY_SPACE)) {
-            auto_generate = !auto_generate;
-        }
-        if(IsKeyPressed(KEY_R)) {
-            init_grid(&wfc);
-        }
+        // Handle initialization phases first
+        if(!wfc.patterns_extracted || needs_new_patterns) {
+            // Extract patterns incrementally
+            if(needs_new_patterns && wfc.patterns_extracted) {
+                // Re-initialize extraction for new patterns
+                init_pattern_extraction(&wfc);
+                needs_new_patterns = false;
+                auto_generate = false;  // Stop auto generation during re-extraction
+            }
+            extract_patterns_step(&wfc, 100);  // Process 100 patterns per frame
+        } else if(!wfc.adjacency_built) {
+            // Build adjacency rules incrementally
+            build_adjacency_step(&wfc, 500);  // Process 500 rules per frame
+        } else if(!initialization_complete) {
+            // Initialize grid after patterns and adjacency are ready
+            init_grid_start(&wfc);
+            initialization_complete = true;
+            wfc.grid_initialized = false;  // Force grid initialization
+        } else if(!wfc.grid_initialized || needs_grid_reset) {
+            // Initialize or reset grid incrementally
+            if(needs_grid_reset) {
+                init_grid_start(&wfc);
+                needs_grid_reset = false;
+            }
+            init_grid_step(&wfc, 200);  // Process 200 cells per frame
+        } else {
+            // Normal operation - only process input after initialization
+            if(IsKeyPressed(KEY_SPACE)) {
+                auto_generate = !auto_generate;
+                if(!auto_generate && !wfc.generation_complete) {
+                    sprintf(wfc.current_operation, "Paused");
+                }
+            }
+            if(IsKeyPressed(KEY_R) && wfc.grid_initialized) {
+                needs_grid_reset = true;
+                auto_generate = false;  // Stop auto generation during reset
+            }
+            if(IsKeyPressed(KEY_N) && wfc.grid_initialized) {
+                // Extract new patterns from input
+                needs_new_patterns = true;
+                wfc.patterns_extracted = false;
+                wfc.adjacency_built = false;
+                wfc.grid_initialized = false;
+                initialization_complete = false;
+                auto_generate = false;
+            }
 
-        // Run generation at max speed
-        if(IsKeyPressed(KEY_S)) {
-            wfc_step(&wfc);
-        } else if(auto_generate && !wfc.generation_complete) {
-            // Run multiple steps per frame for maximum speed
-            for(int i = 0; i < 25 && !wfc.generation_complete; i++) {
+            // Run generation at max speed
+            if(IsKeyPressed(KEY_S)) {
+                sprintf(wfc.current_operation, "Generating (Step mode)");
                 wfc_step(&wfc);
+                if(wfc.generation_complete) {
+                    sprintf(wfc.current_operation, "Generation complete!");
+                }
+            } else if(auto_generate && !wfc.generation_complete) {
+                sprintf(wfc.current_operation, "Generating (Auto mode)");
+                // Run multiple steps per frame for maximum speed
+                for(int i = 0; i < 25 && !wfc.generation_complete; i++) {
+                    wfc_step(&wfc);
+                }
+                if(wfc.generation_complete) {
+                    sprintf(wfc.current_operation, "Generation complete!");
+                }
             }
         }
 
@@ -405,32 +560,121 @@ int main(int argc, char *argv[]) {
         BeginDrawing();
         ClearBackground(BLACK);
 
-        // Draw input image
-        DrawText("Input Image", 50, 20, 20, WHITE);
-        float scale = 200.0f / fmax(wfc.input_image.width, wfc.input_image.height);
-        DrawTextureEx(wfc.input_texture, (Vector2){50, 50}, 0, scale, WHITE);
+        // Show different UI based on initialization state
+        if(!wfc.patterns_extracted) {
+            // Show pattern extraction progress
+            DrawText(wfc.current_operation, 50, 200, 20, WHITE);
 
-        // Draw output
-        DrawText("WFC Output", 600, 20, 20, WHITE);
-        draw_output(&wfc, 600, 50);
+            char progress_text[256];
+            sprintf(progress_text, "Scanning patterns: %d of %d locations",
+                    wfc.extraction_progress, wfc.extraction_total);
+            DrawText(progress_text, 50, 230, 16, LIGHTGRAY);
 
-        // Draw controls
-        DrawText("Controls:", 50, 300, 16, WHITE);
-        DrawText("SPACE - Toggle auto generation", 50, 320, 14, LIGHTGRAY);
-        DrawText("S - Single step", 50, 340, 14, LIGHTGRAY);
-        DrawText("R - Reset", 50, 360, 14, LIGHTGRAY);
+            sprintf(progress_text, "Unique patterns found: %d", wfc.pattern_count);
+            DrawText(progress_text, 50, 250, 16, LIGHTGRAY);
 
-        // Draw status
-        char status[256];
-        sprintf(status, "Step: %d | Auto: %s | Status: %s",
-                wfc.generation_step,
-                auto_generate ? "ON" : "OFF",
-                wfc.generation_complete ? "COMPLETE" : "GENERATING");
-        DrawText(status, 50, 400, 14, GREEN);
+            // Draw progress bar
+            int bar_width = 400;
+            int bar_height = 20;
+            float progress = wfc.extraction_total > 0 ? (float)wfc.extraction_progress / wfc.extraction_total : 0;
 
-        sprintf(status, "Patterns: %d | Grid: %dx%d",
-                wfc.pattern_count, OUTPUT_WIDTH, OUTPUT_HEIGHT);
-        DrawText(status, 50, 420, 14, GREEN);
+            DrawRectangle(50, 280, bar_width, bar_height, DARKGRAY);
+            DrawRectangle(50, 280, (int)(bar_width * progress), bar_height, GREEN);
+            DrawRectangleLines(50, 280, bar_width, bar_height, WHITE);
+
+            sprintf(progress_text, "%.1f%%", progress * 100);
+            DrawText(progress_text, 50 + bar_width + 10, 280, 16, WHITE);
+
+        } else if(!wfc.adjacency_built) {
+            // Show adjacency building progress
+            DrawText(wfc.current_operation, 50, 200, 20, WHITE);
+
+            char progress_text[256];
+            sprintf(progress_text, "Processing rule %d of %d",
+                    wfc.adjacency_progress, wfc.adjacency_total);
+            DrawText(progress_text, 50, 230, 16, LIGHTGRAY);
+
+            // Draw progress bar
+            int bar_width = 400;
+            int bar_height = 20;
+            float progress = wfc.adjacency_total > 0 ? (float)wfc.adjacency_progress / wfc.adjacency_total : 0;
+
+            DrawRectangle(50, 260, bar_width, bar_height, DARKGRAY);
+            DrawRectangle(50, 260, (int)(bar_width * progress), bar_height, GREEN);
+            DrawRectangleLines(50, 260, bar_width, bar_height, WHITE);
+
+            sprintf(progress_text, "%.1f%%", progress * 100);
+            DrawText(progress_text, 50 + bar_width + 10, 260, 16, WHITE);
+
+        } else if(!wfc.grid_initialized) {
+            // Show grid initialization progress
+            DrawText(wfc.current_operation, 50, 200, 20, WHITE);
+
+            char progress_text[256];
+            sprintf(progress_text, "Initializing cell %d of %d",
+                    wfc.grid_init_progress, wfc.grid_init_total);
+            DrawText(progress_text, 50, 230, 16, LIGHTGRAY);
+
+            sprintf(progress_text, "Setting up %d possible patterns per cell", wfc.pattern_count);
+            DrawText(progress_text, 50, 250, 16, LIGHTGRAY);
+
+            // Draw progress bar
+            int bar_width = 400;
+            int bar_height = 20;
+            float progress = wfc.grid_init_total > 0 ? (float)wfc.grid_init_progress / wfc.grid_init_total : 0;
+
+            DrawRectangle(50, 280, bar_width, bar_height, DARKGRAY);
+            DrawRectangle(50, 280, (int)(bar_width * progress), bar_height, ORANGE);
+            DrawRectangleLines(50, 280, bar_width, bar_height, WHITE);
+
+            sprintf(progress_text, "%.1f%%", progress * 100);
+            DrawText(progress_text, 50 + bar_width + 10, 280, 16, WHITE);
+
+        } else {
+            // Normal UI after initialization
+            // Draw input image
+            DrawText("Input Image", 50, 20, 20, WHITE);
+            float scale = 200.0f / fmax(wfc.input_image.width, wfc.input_image.height);
+            DrawTextureEx(wfc.input_texture, (Vector2){50, 50}, 0, scale, WHITE);
+
+            // Draw output
+            DrawText("WFC Output", 600, 20, 20, WHITE);
+            draw_output(&wfc, 600, 50);
+
+            // Draw controls
+            DrawText("Controls:", 50, 300, 16, WHITE);
+            DrawText("SPACE - Toggle auto generation", 50, 320, 14, LIGHTGRAY);
+            DrawText("S - Single step", 50, 340, 14, LIGHTGRAY);
+            DrawText("R - Reset grid (keep same patterns)", 50, 360, 14, LIGHTGRAY);
+            DrawText("N - Extract NEW patterns from input", 50, 380, 14, LIGHTGRAY);
+
+            // Draw status
+            char status[256];
+            sprintf(status, "Step: %d | Auto: %s | Status: %s",
+                    wfc.generation_step,
+                    auto_generate ? "ON" : "OFF",
+                    wfc.generation_complete ? "COMPLETE" : "GENERATING");
+            DrawText(status, 50, 420, 14, GREEN);
+
+            sprintf(status, "Patterns: %d | Grid: %dx%d | Operation: %s",
+                    wfc.pattern_count, OUTPUT_WIDTH, OUTPUT_HEIGHT, wfc.current_operation);
+            DrawText(status, 50, 440, 14, GREEN);
+
+            // Show progress bar during generation
+            if(!wfc.generation_complete && (auto_generate || wfc.generation_step > 0)) {
+                int total_cells = OUTPUT_WIDTH * OUTPUT_HEIGHT;
+                float progress = (float)wfc.generation_step / total_cells;
+                int bar_width = 300;
+                int bar_height = 10;
+
+                DrawRectangle(50, 465, bar_width, bar_height, DARKGRAY);
+                DrawRectangle(50, 465, (int)(bar_width * progress), bar_height, BLUE);
+                DrawRectangleLines(50, 465, bar_width, bar_height, WHITE);
+
+                sprintf(status, "Progress: %d/%d cells", wfc.generation_step, total_cells);
+                DrawText(status, 360, 462, 12, LIGHTGRAY);
+            }
+        }
 
         EndDrawing();
     }
