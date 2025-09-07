@@ -7,10 +7,10 @@
 #include <math.h>
 
 #define PATTERN_SIZE 3
-#define OUTPUT_WIDTH 96
-#define OUTPUT_HEIGHT 96
-#define MAX_PATTERNS 512
-#define SCALE 6
+#define OUTPUT_WIDTH 80
+#define OUTPUT_HEIGHT 80
+#define MAX_PATTERNS 255
+#define SCALE 8
 #define DEFAULT_FILE "brick.png"
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 720
