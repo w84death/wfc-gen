@@ -431,14 +431,14 @@ void draw_output(WFC *wfc, int offset_x, int offset_y) {
     for(int y = 0; y < OUTPUT_HEIGHT; y++) {
         for(int x = 0; x < OUTPUT_WIDTH; x++) {
             Cell *cell = &wfc->grid[y][x];
-            Color color = LIGHTGRAY;
+            Color color = BLACK;
 
             if(cell->collapsed && cell->final_pattern >= 0) {
                 // Use center pixel of the pattern as representative color
                 color = wfc->patterns[cell->final_pattern].pixels[PATTERN_SIZE/2][PATTERN_SIZE/2];
             } else if(cell->num_possible > 0) {
-                // Show entropy as grayscale
-                int brightness = 255 * cell->num_possible / wfc->pattern_count;
+                // Show entropy as very dark grayscale for better blending
+                int brightness = 30 * cell->num_possible / wfc->pattern_count;  // Max 30 instead of 255
                 color = (Color){brightness, brightness, brightness, 255};
             } else {
                 color = RED; // Error state
