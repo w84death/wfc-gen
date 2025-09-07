@@ -9,7 +9,7 @@
 #define PATTERN_SIZE 3
 #define OUTPUT_WIDTH 80
 #define OUTPUT_HEIGHT 80
-#define MAX_PATTERNS 256
+#define MAX_PATTERNS 512
 #define SCALE 8
 #define DEFAULT_FILE "brick.png"
 #define WINDOW_WIDTH 1280
@@ -405,7 +405,7 @@ int main(int argc, char *argv[]) {
 
         // Drawing
         BeginDrawing();
-        ClearBackground(DARKGRAY);
+        ClearBackground(BLACK);
 
         // Draw input image
         DrawText("Input Image", 50, 20, 20, WHITE);
@@ -417,11 +417,11 @@ int main(int argc, char *argv[]) {
         draw_output(&wfc, 600, 50);
 
         // Draw controls
-        DrawText("Controls:", 50, 300, 16, WHITE);
-        DrawText("SPACE - Toggle auto generation", 50, 320, 14, LIGHTGRAY);
-        DrawText("S - Single step", 50, 340, 14, LIGHTGRAY);
-        DrawText("R - Reset", 50, 360, 14, LIGHTGRAY);
-        DrawText("UP/DOWN - Change speed", 50, 380, 14, LIGHTGRAY);
+        DrawText("Controls:", 50, 300, 18, WHITE);
+        DrawText("SPACE - Toggle auto generation", 50, 320, 16, LIGHTGRAY);
+        DrawText("S - Single step", 50, 340, 16, LIGHTGRAY);
+        DrawText("R - Reset", 50, 360, 16, LIGHTGRAY);
+        DrawText("UP/DOWN - Change speed", 50, 380, 16, LIGHTGRAY);
 
         // Draw status
         char status[256];
@@ -429,11 +429,11 @@ int main(int argc, char *argv[]) {
                 wfc.generation_step, steps_per_frame,
                 auto_generate ? "ON" : "OFF",
                 wfc.generation_complete ? "COMPLETE" : "GENERATING");
-        DrawText(status, 50, 420, 14, GREEN);
+        DrawText(status, 50, 420, 16, GREEN);
 
         sprintf(status, "Patterns: %d | Grid: %dx%d",
                 wfc.pattern_count, OUTPUT_WIDTH, OUTPUT_HEIGHT);
-        DrawText(status, 50, 440, 14, GREEN);
+        DrawText(status, 50, 440, 16, GREEN);
 
         EndDrawing();
     }
