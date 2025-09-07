@@ -61,10 +61,9 @@ Run with custom input image:
 
 ## Controls
 
-- **SPACE** - Toggle automatic generation
+- **SPACE** - Toggle automatic generation (runs at maximum speed)
 - **S** - Single step generation
 - **R** - Reset and start over
-- **UP/DOWN** - Increase/decrease generation speed
 - **ESC** - Exit program
 
 ## How It Works

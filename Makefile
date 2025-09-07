@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -O2 -std=c99
+CFLAGS = -Wall -Wextra -O3 -std=c99
 LDFLAGS = -lraylib -lm -lpthread -ldl -lrt -lX11
 
 # Detect OS

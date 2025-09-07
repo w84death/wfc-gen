@@ -7,10 +7,10 @@
 #include <math.h>
 
 #define PATTERN_SIZE 3
-#define OUTPUT_WIDTH 80
-#define OUTPUT_HEIGHT 80
+#define OUTPUT_WIDTH 96
+#define OUTPUT_HEIGHT 96
 #define MAX_PATTERNS 512
-#define SCALE 8
+#define SCALE 6
 #define DEFAULT_FILE "brick.png"
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 720
@@ -381,7 +381,6 @@ int main(int argc, char *argv[]) {
 
     // Control variables
     bool auto_generate = false;
-    int steps_per_frame = 1;
 
     while(!WindowShouldClose()) {
         // Input handling
@@ -391,16 +390,15 @@ int main(int argc, char *argv[]) {
         if(IsKeyPressed(KEY_R)) {
             init_grid(&wfc);
         }
-        if(IsKeyPressed(KEY_S) || (auto_generate && !wfc.generation_complete)) {
-            for(int i = 0; i < steps_per_frame; i++) {
+
+        // Run generation at max speed
+        if(IsKeyPressed(KEY_S)) {
+            wfc_step(&wfc);
+        } else if(auto_generate && !wfc.generation_complete) {
+            // Run multiple steps per frame for maximum speed
+            for(int i = 0; i < 25 && !wfc.generation_complete; i++) {
                 wfc_step(&wfc);
             }
-        }
-        if(IsKeyPressed(KEY_UP)) {
-            steps_per_frame = (steps_per_frame < 50) ? steps_per_frame + 1 : steps_per_frame;
-        }
-        if(IsKeyPressed(KEY_DOWN)) {
-            steps_per_frame = (steps_per_frame > 1) ? steps_per_frame - 1 : 1;
         }
 
         // Drawing
@@ -417,23 +415,22 @@ int main(int argc, char *argv[]) {
         draw_output(&wfc, 600, 50);
 
         // Draw controls
-        DrawText("Controls:", 50, 300, 18, WHITE);
-        DrawText("SPACE - Toggle auto generation", 50, 320, 16, LIGHTGRAY);
-        DrawText("S - Single step", 50, 340, 16, LIGHTGRAY);
-        DrawText("R - Reset", 50, 360, 16, LIGHTGRAY);
-        DrawText("UP/DOWN - Change speed", 50, 380, 16, LIGHTGRAY);
+        DrawText("Controls:", 50, 300, 16, WHITE);
+        DrawText("SPACE - Toggle auto generation", 50, 320, 14, LIGHTGRAY);
+        DrawText("S - Single step", 50, 340, 14, LIGHTGRAY);
+        DrawText("R - Reset", 50, 360, 14, LIGHTGRAY);
 
         // Draw status
         char status[256];
-        sprintf(status, "Step: %d | Speed: %d | Auto: %s | Status: %s",
-                wfc.generation_step, steps_per_frame,
+        sprintf(status, "Step: %d | Auto: %s | Status: %s",
+                wfc.generation_step,
                 auto_generate ? "ON" : "OFF",
                 wfc.generation_complete ? "COMPLETE" : "GENERATING");
-        DrawText(status, 50, 420, 16, GREEN);
+        DrawText(status, 50, 400, 14, GREEN);
 
         sprintf(status, "Patterns: %d | Grid: %dx%d",
                 wfc.pattern_count, OUTPUT_WIDTH, OUTPUT_HEIGHT);
-        DrawText(status, 50, 440, 16, GREEN);
+        DrawText(status, 50, 420, 14, GREEN);
 
         EndDrawing();
     }
